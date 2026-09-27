@@ -2,7 +2,7 @@
     "use strict";
 
     const CHUNK_DIR =
-        "https://raw.githubusercontent.com/linkawaken1979-alt/TF2-Web/main/chunks/";
+        "https://cdn.jsdelivr.net/gh/linkawaken1979-alt/TF2-Web@main/chunks/";
 
     const FILES = {
         "background01.data": 17,
