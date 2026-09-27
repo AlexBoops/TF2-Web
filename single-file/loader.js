@@ -3,7 +3,7 @@
     "use strict";
 
     const CHUNK_DIR =
-        "https://github.com/linkawaken1979-alt/TF2-Web/tree/main/chunks";
+        "https://raw.githubusercontent.com/linkawaken1979-alt/TF2-Web/main/chunks/";
 
     const FILES = {
         "background01.data": 17,
@@ -16,186 +16,187 @@
         "tc_hydro.data": 30
     };
 
+    const originalFetch = window.fetch.bind(window);
     const cache = new Map();
-
-    // ------------------------------------------------------------
-    // Helpers
-    // ------------------------------------------------------------
 
     function getFileName(url) {
         try {
-            const u = new URL(url, location.href);
+            const clean = String(url).split("?")[0].split("#")[0];
             return decodeURIComponent(
-                u.pathname.split("/").pop()
+                clean.substring(clean.lastIndexOf("/") + 1)
             );
         } catch {
-            return String(url)
-                .split("/")
-                .pop()
-                .split("?")[0];
+            return String(url).split("/").pop();
         }
     }
 
-    function isSplitFile(url) {
-        return Object.prototype.hasOwnProperty.call(
-            FILES,
-            getFileName(url)
-        );
+    function findSplitFile(url) {
+        const name = getFileName(url);
+
+        if (FILES[name]) {
+            return name;
+        }
+
+        for (const file of Object.keys(FILES)) {
+            if (String(url).includes(file)) {
+                return file;
+            }
+        }
+
+        return null;
     }
 
-    // ------------------------------------------------------------
-    // Original fetch
-    // ------------------------------------------------------------
-
-    const originalFetch = window.fetch.bind(window);
-
-    // ------------------------------------------------------------
-    // Load split file from GitHub
-    // ------------------------------------------------------------
-
-    async function loadSplitFile(url) {
-        const fileName = getFileName(url);
+    async function loadSplitFile(fileName) {
 
         if (cache.has(fileName)) {
             console.log(
-                "[TF2 Loader] Cache hit:",
+                "[TF2 Loader] Using cached:",
                 fileName
             );
 
             return cache.get(fileName);
         }
 
-        const count = FILES[fileName];
-
-        if (!count) {
-            throw new Error(
-                "[TF2 Loader] Unknown split file: " +
-                fileName
-            );
-        }
+        const partCount = FILES[fileName];
 
         console.log(
-            `[TF2 Loader] Starting ${fileName} (${count} parts)`
+            `[TF2 Loader] START ${fileName} — ${partCount} parts`
         );
 
         const parts = [];
         let totalSize = 0;
 
-        for (let i = 0; i < count; i++) {
+        for (let i = 0; i < partCount; i++) {
+
             const partName =
-                fileName.replace(/\.data$/, "") +
-                `.part${String(i).padStart(3, "0")}.data`;
+                fileName.replace(".data", "") +
+                ".part" +
+                String(i).padStart(3, "0") +
+                ".data";
 
             const partURL =
-                CHUNK_DIR +
-                encodeURIComponent(partName);
+                CHUNK_DIR + partName;
 
             console.log(
-                `[TF2 Loader] ${fileName}: ` +
-                `${i + 1}/${count}`
+                `[TF2 Loader] GET ${i + 1}/${partCount}: ${partName}`
             );
 
-            const response = await originalFetch(
-                partURL,
-                {
-                    cache: "force-cache"
-                }
-            );
+            const response =
+                await originalFetch(
+                    partURL,
+                    {
+                        cache: "no-store"
+                    }
+                );
 
             if (!response.ok) {
                 throw new Error(
-                    `[TF2 Loader] Failed ${partName}: ` +
-                    `HTTP ${response.status}`
+                    `HTTP ${response.status} while loading ${partURL}`
                 );
             }
 
             const buffer =
                 await response.arrayBuffer();
 
+            console.log(
+                `[TF2 Loader] OK ${partName} — ` +
+                `${(buffer.byteLength / 1048576).toFixed(2)} MB`
+            );
+
             parts.push(buffer);
             totalSize += buffer.byteLength;
 
-            const percent =
-                Math.round(
-                    ((i + 1) / count) * 100
-                );
+            if (window.Module) {
+                Module.setStatus =
+                    Module.setStatus || (() => {});
 
-            console.log(
-                `[TF2 Loader] ${fileName}: ${percent}%`
-            );
+                try {
+                    Module.setStatus(
+                        `Loading ${fileName} (${i + 1}/${partCount})`
+                    );
+                } catch {}
+            }
         }
 
-        // Assemble one contiguous buffer.
-        const output =
+        console.log(
+            `[TF2 Loader] Combining ${fileName}: ` +
+            `${(totalSize / 1048576).toFixed(2)} MB`
+        );
+
+        const combined =
             new Uint8Array(totalSize);
 
         let offset = 0;
 
-        for (const part of parts) {
-            output.set(
-                new Uint8Array(part),
+        for (const buffer of parts) {
+
+            combined.set(
+                new Uint8Array(buffer),
                 offset
             );
 
-            offset += part.byteLength;
+            offset += buffer.byteLength;
         }
 
-        console.log(
-            `[TF2 Loader] Finished ${fileName}: ` +
-            `${(totalSize / 1024 / 1024).toFixed(2)} MB`
+        cache.set(
+            fileName,
+            combined
         );
 
-        cache.set(fileName, output);
+        console.log(
+            `[TF2 Loader] COMPLETE ${fileName}`
+        );
 
-        return output;
+        return combined;
     }
 
-    // ------------------------------------------------------------
-    // FETCH INTERCEPTION
-    // ------------------------------------------------------------
+    /*
+     * FETCH INTERCEPTOR
+     */
 
     window.fetch = async function(input, init) {
-        let url;
 
-        if (typeof input === "string") {
-            url = input;
-        } else if (input instanceof Request) {
-            url = input.url;
-        } else {
-            url = String(input);
+        const url =
+            input instanceof Request
+                ? input.url
+                : String(input);
+
+        const fileName =
+            findSplitFile(url);
+
+        if (!fileName) {
+            return originalFetch(
+                input,
+                init
+            );
         }
-
-        if (!isSplitFile(url)) {
-            return originalFetch(input, init);
-        }
-
-        const fileName = getFileName(url);
 
         console.log(
-            "[TF2 Loader] Intercepted fetch:",
-            fileName
+            "[TF2 Loader] FETCH INTERCEPTED:",
+            url
         );
 
         const data =
-            await loadSplitFile(url);
+            await loadSplitFile(fileName);
 
-        return new Response(data.slice(0), {
-            status: 200,
-            statusText: "OK",
-            headers: {
-                "Content-Type":
-                    "application/octet-stream"
+        return new Response(
+            data.slice(0),
+            {
+                status: 200,
+                statusText: "OK",
+                headers: {
+                    "Content-Type":
+                        "application/octet-stream",
+                    "Content-Length":
+                        String(data.byteLength)
+                }
             }
-        });
+        );
     };
 
-    // ------------------------------------------------------------
-    // XHR INTERCEPTION
-    //
-    // Instead of faking XHR properties, assemble the file into
-    // a Blob URL and let the browser's real XHR implementation
-    // handle the response.
-    // ------------------------------------------------------------
+    /*
+     * XHR INTERCEPTOR
+     */
 
     const NativeXHR =
         window.XMLHttpRequest;
@@ -207,42 +208,50 @@
         NativeXHR.prototype.send;
 
     NativeXHR.prototype.open =
-        function(method, url, async, user, password) {
+        function(
+            method,
+            url,
+            async,
+            user,
+            password
+        ) {
 
-            this._tf2Method = method;
-            this._tf2URL = String(url);
-            this._tf2Async =
-                async === undefined ? true : async;
-            this._tf2User = user;
-            this._tf2Password = password;
+            const fileName =
+                findSplitFile(url);
 
-            this._tf2Split =
-                isSplitFile(this._tf2URL);
-
-            if (this._tf2Split) {
-                console.log(
-                    "[TF2 Loader] Intercepted XHR:",
-                    getFileName(this._tf2URL)
+            if (!fileName) {
+                return nativeOpen.call(
+                    this,
+                    method,
+                    url,
+                    async,
+                    user,
+                    password
                 );
-
-                // Don't open the original .data URL yet.
-                return;
             }
 
-            return nativeOpen.call(
-                this,
-                method,
-                url,
-                async,
-                user,
-                password
+            console.log(
+                "[TF2 Loader] XHR INTERCEPTED:",
+                url
             );
+
+            this.__tf2Split = true;
+            this.__tf2File = fileName;
+            this.__tf2Method = method;
+            this.__tf2Async =
+                async === undefined
+                    ? true
+                    : async;
+
+            this.__tf2User = user;
+            this.__tf2Password = password;
+            this.__tf2URL = String(url);
         };
 
     NativeXHR.prototype.send =
         function(body) {
 
-            if (!this._tf2Split) {
+            if (!this.__tf2Split) {
                 return nativeSend.call(
                     this,
                     body
@@ -250,100 +259,91 @@
             }
 
             const xhr = this;
-            const originalURL = this._tf2URL;
 
-            loadSplitFile(originalURL)
-                .then(data => {
+            loadSplitFile(
+                this.__tf2File
+            )
+            .then(data => {
 
-                    const blob =
-                        new Blob(
-                            [data],
-                            {
-                                type:
-                                    "application/octet-stream"
-                            }
-                        );
-
-                    const blobURL =
-                        URL.createObjectURL(blob);
-
-                    xhr._tf2BlobURL =
-                        blobURL;
-
-                    // Open the REAL XHR against
-                    // the assembled blob.
-                    nativeOpen.call(
-                        xhr,
-                        xhr._tf2Method,
-                        blobURL,
-                        xhr._tf2Async,
-                        xhr._tf2User,
-                        xhr._tf2Password
+                const blob =
+                    new Blob(
+                        [data],
+                        {
+                            type:
+                                "application/octet-stream"
+                        }
                     );
 
-                    // Clean up after XHR finishes.
-                    const oldLoadEnd =
-                        xhr.onloadend;
+                const blobURL =
+                    URL.createObjectURL(
+                        blob
+                    );
 
-                    xhr.onloadend =
-                        function(event) {
+                nativeOpen.call(
+                    xhr,
+                    xhr.__tf2Method,
+                    blobURL,
+                    xhr.__tf2Async,
+                    xhr.__tf2User,
+                    xhr.__tf2Password
+                );
 
-                            URL.revokeObjectURL(
-                                blobURL
+                const oldLoadEnd =
+                    xhr.onloadend;
+
+                xhr.onloadend =
+                    function(event) {
+
+                        URL.revokeObjectURL(
+                            blobURL
+                        );
+
+                        if (
+                            typeof oldLoadEnd ===
+                            "function"
+                        ) {
+                            oldLoadEnd.call(
+                                xhr,
+                                event
                             );
+                        }
+                    };
 
-                            if (
-                                typeof oldLoadEnd ===
-                                "function"
-                            ) {
-                                oldLoadEnd.call(
-                                    xhr,
-                                    event
-                                );
+                nativeSend.call(
+                    xhr,
+                    body
+                );
+
+            })
+            .catch(error => {
+
+                console.error(
+                    "[TF2 Loader] XHR FAILED:",
+                    error
+                );
+
+                if (
+                    typeof xhr.onerror ===
+                    "function"
+                ) {
+                    xhr.onerror(
+                        new ErrorEvent(
+                            "error",
+                            {
+                                error
                             }
-                        };
-
-                    nativeSend.call(
-                        xhr,
-                        body
+                        )
                     );
-                })
-                .catch(error => {
-                    console.error(
-                        "[TF2 Loader] XHR error:",
-                        error
-                    );
-
-                    // Trigger the normal XHR
-                    // error callback.
-                    if (
-                        typeof xhr.onerror ===
-                        "function"
-                    ) {
-                        xhr.onerror(
-                            new ProgressEvent("error")
-                        );
-                    }
-
-                    if (
-                        typeof xhr.onloadend ===
-                        "function"
-                    ) {
-                        xhr.onloadend(
-                            new ProgressEvent(
-                                "loadend"
-                            )
-                        );
-                    }
-                });
+                }
+            });
         };
 
     console.log(
-        "[TF2 Loader] Single-file TF2 loader initialized."
+        "[TF2 Loader] Inline split-data loader initialized."
     );
 
     console.log(
-        "[TF2 Loader] Remote chunks:",
+        "[TF2 Loader] Chunk source:",
         CHUNK_DIR
     );
 
