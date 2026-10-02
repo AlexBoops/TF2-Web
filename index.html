@@ -1,11 +1,12 @@
-<!doctypehtml>
-<html lang=en-us>
+<!doctype html>
+<html lang="en-us">
     <head>
-        <base href="/">
-        <meta charset=utf-8>
-        <meta content="text/html; charset=utf-8" http-equiv=Content-Type>
+        <!-- Points all relative assets (images, scripts, chunks) to the TF2-Web repo directory -->
+        <base href="https://alexboops.github.io/TF2-Web/">
+        <meta charset="utf-8">
+        <meta content="text/html; charset=utf-8" http-equiv="Content-Type">
         <title>Team Fortress 2</title>
-        <link href=assets/tf2-favicon.png rel=icon type=image/png>
+        <link href="assets/tf2-favicon.png" rel="icon" type="image/png">
         <style>
             body {
                 font-family: arial;
@@ -246,31 +247,34 @@
         </style>
     </head>
     <body>
-        <div id=namePrompt hidden>
+        <div id="namePrompt" hidden>
             <form>
                 <h2>Pick a name</h2>
-                <input id=namePromptInput maxlength=31 placeholder="your name" spellcheck=false required>
-                <input type=submit value=Play>
+                <input id="namePromptInput" maxlength="31" placeholder="your name" spellcheck="false" required>
+                <input type="submit" value="Play">
             </form>
         </div>
-        <img alt="Team Fortress 2" id=emscripten_logo src=assets/tf2-logo.png>
-        <div class=spinner id=spinner></div>
-        <div class=emscripten id=status>Downloading...</div>
-        <span id=controls>
+        <img alt="Team Fortress 2" id="emscripten_logo" src="assets/tf2-logo.png">
+        <div class="spinner" id="spinner"></div>
+        <div class="emscripten" id="status">Downloading...</div>
+        <span id="controls">
             <span>
-                <input type=button value=Fullscreen onclick=goFullscreen()>
+                <input type="button" value="Fullscreen" onclick="goFullscreen()">
             </span>
-            <label for=playerName>Name</label>
-            <input id=playerName maxlength=31 placeholder="your name" spellcheck=false>
+            <label for="playerName">Name</label>
+            <input id="playerName" maxlength="31" placeholder="your name" spellcheck="false">
         </span>
-        <div class=emscripten>
-            <progress hidden id=progress max=100 value=0></progress>
+        <div class="emscripten">
+            <progress hidden id="progress" max="100" value="0"></progress>
         </div>
-        <div class=emscripten_border>
-            <canvas class=emscripten id=canvas oncontextmenu=event.preventDefault() tabindex=-1></canvas>
+        <div class="emscripten_border">
+            <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
         </div>
-        <textarea id=output rows=8></textarea>
+        <textarea id="output" rows="8"></textarea>
         <script>
+            // Ensure runtime points to the GitHub Pages repository path
+            window.CS_FILES_BASE = "https://alexboops.github.io/TF2-Web/";
+
             function goFullscreen() {
                 var e = document.querySelector(".emscripten_border") || document.getElementById("canvas");
                 if (e) {
@@ -375,6 +379,9 @@
             canvasElement.widthNative = screen.availWidth,
             canvasElement.heightNative = screen.availHeight;
             var Module = {
+                locateFile: function(path) {
+                    return window.CS_FILES_BASE + path;
+                },
                 csSavedName: function() {
                     return window.csSavedName ? window.csSavedName() : ""
                 },
@@ -426,7 +433,7 @@
                 }
             }
         </script>
-        <script src=loader.js></script>
-        <script async src=tf2_launcher.js></script>
+        <script src="loader.js"></script>
+        <script async src="tf2_launcher.js"></script>
     </body>
 </html>
